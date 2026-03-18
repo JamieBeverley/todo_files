@@ -1,7 +1,19 @@
 [project]
 name = "todo-files"
 version = "0.1.0"
-description = "Add your description here"
+description = "Sync local .todo files to Jira and other ticketing backends"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "alembic>=1.18.4",
+    "click>=8.3.1",
+    "pyyaml>=6.0.3",
+    "sqlalchemy>=2.0.48",
+]
+
+[project.scripts]
+todofiles = "todo_files.cli:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
