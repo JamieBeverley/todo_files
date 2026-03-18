@@ -167,8 +167,60 @@ Both output a structured list of would-be creates, updates, and deletes.
 - Deletions are detected by diffing the set of IDs returned by the parser against the IDs in the DB for that file. A ticket present in the DB but absent from the parsed file is flagged as `pending_deletion`. The CLI then prompts: `"You removed ticket '<title>' (PROJ-42) — delete it in Jira? [y/N]"` before taking any action.
 - `--dry-run` uses `last_synced_hash` to detect changes locally with no API call. `diff` fetches live Jira state and updates `sync_status` accordingly.
 
+## Config
+
+User-level config follows the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest/):
+
+- Config file: `$XDG_CONFIG_HOME/todofiles/config.yaml` (default: `~/.config/todofiles/config.yaml`)
+- Format: YAML
+
+```yaml
+jira:
+  base_url: "https://mycompany.atlassian.net"
+  username: "me@example.com"
+  api_token: "your_api_token_here"
+```
+
+Set via CLI:
+```
+todofiles config set jira.base_url=https://mycompany.atlassian.net
+todofiles config set jira.username=me@example.com
+todofiles config set jira.api_token=secret
+```
+
+Config is user-level (not per-repo). Sensitive values (api_token) are stored in the config file with user-only permissions (chmod 600).
+
+## Jira Integration
+
+Uses the Jira REST API v3 with HTTP Basic auth (`username:api_token`).
+
+**Field mapping (internal → Jira):**
+| Internal field | Jira field |
+|---|---|
+| `ticket.title` | `summary` |
+| `ticket.description` | `description` (Atlassian Document Format) |
+| `ticket.labels` | `labels` |
+| `ticket.item_type` (or `config.item_type`) | `issuetype.name` |
+| `config.board` | `project.key` |
+| `config.status_map[ticket.status]` | target status for transition |
+
+**Status updates** require a Jira transition (not a direct field update). The mapper:
+1. Fetches available transitions for the issue
+2. Matches by name using `config.status_map`
+3. POSTs the transition
+
+**Description format:** Jira API v3 uses Atlassian Document Format (ADF). Plain text descriptions are converted to a minimal ADF document (paragraphs split on double newlines).
+
+**Push flow (with Jira configured):**
+1. Parse file → assign IDs → write IDs back
+2. Build sync plan (DB diff)
+3. Show plan, confirm deletions
+4. For each CREATE: `POST /rest/api/3/issue` → get key → write `jira: KEY` back to file + DB
+5. For each UPDATE: `PUT /rest/api/3/issue/{key}` + transition if status changed
+6. For each confirmed DELETE: `DELETE /rest/api/3/issue/{key}`
+7. Update `sync_status` → `clean` and `last_synced_at` in DB
+
 # Open Questions
 
-- Should `pull` rewrite the entire file or do a smart merge that preserves ordering and comments?
-- Should the local ID be a UUID or something more human-readable (e.g., a slug derived from the title)?
+- Should `pull` rewrite the entire file or do a smart merge that preserves ordering and comments? *(decided: full rewrite for now)*
 - What's the right behavior when a Jira ticket is deleted remotely — error, warn, or mark as deleted locally?
