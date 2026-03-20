@@ -25,6 +25,8 @@ class JiraMapper(BaseMapper):
 
     def create(self, ticket: Ticket, config: FileConfig) -> str:
         payload = self._build_fields(ticket, config)
+        resp = self._post("/rest/api/3/issue", {"fields": payload})
+        key = resp["key"]
         if config.sprint:
             sprint_id = (
                 self._resolve_active_sprint(config.board)
@@ -32,9 +34,7 @@ class JiraMapper(BaseMapper):
                 else int(config.sprint)
             )
             if sprint_id is not None:
-                payload["customfield_10020"] = sprint_id
-        resp = self._post("/rest/api/3/issue", {"fields": payload})
-        key = resp["key"]
+                self._post(f"/rest/agile/1.0/sprint/{sprint_id}/issue", {"issues": [key]})
         target_status = config.status_map.get(ticket.status)
         if target_status:
             self._transition(key, target_status)

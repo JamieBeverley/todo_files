@@ -90,7 +90,8 @@ def push(file: str, dry_run: bool) -> None:
 
     execute_plan(plan, parsed, session)
 
-    if changed:
+    keys_written_back = any(t.remote_key for t in plan.to_create)
+    if changed or keys_written_back:
         todo_writer.write(parsed)
         click.echo("\nWrote IDs back to file.")
 
@@ -101,7 +102,6 @@ def _push_to_jira(plan, parsed, mapper: JiraMapper) -> None:
     """Call the Jira API for each planned change. Updates ticket.remote_key in place."""
     for ticket in plan.to_create:
         try:
-            breakpoint()
             key = mapper.create(ticket, parsed.config)
             ticket.remote_key = key
             click.echo(f"  Created {key}: {ticket.title}")
