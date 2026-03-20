@@ -84,12 +84,13 @@ def flatten(parsed: ParsedFile) -> list[tuple[Ticket, str | None]]:
 class SyncPlan:
     to_create: list[Ticket] = field(default_factory=list)
     to_update: list[Ticket] = field(default_factory=list)
-    to_delete: list[DBTicket] = field(default_factory=list)   # pending confirmation
+    to_delete: list[DBTicket] = field(default_factory=list)    # delete from Jira + DB
+    to_untrack: list[DBTicket] = field(default_factory=list)   # remove from DB only
     clean: list[Ticket] = field(default_factory=list)
 
     @property
     def has_changes(self) -> bool:
-        return bool(self.to_create or self.to_update or self.to_delete)
+        return bool(self.to_create or self.to_update or self.to_delete or self.to_untrack)
 
 
 def build_plan(parsed: ParsedFile, session) -> SyncPlan:
@@ -138,6 +139,19 @@ def build_plan(parsed: ParsedFile, session) -> SyncPlan:
 # ------------------------------------------------------------------
 # Plan execution (DB only — Jira push is separate)
 # ------------------------------------------------------------------
+
+def mark_synced(ticket_ids: set[str], session) -> None:
+    """Set sync_status='clean' for tickets that were successfully pushed to the remote."""
+    if not ticket_ids:
+        return
+    now = datetime.now(timezone.utc)
+    for tid in ticket_ids:
+        db_t = session.get(DBTicket, tid)
+        if db_t:
+            db_t.sync_status = "clean"
+            db_t.last_synced_at = now
+    session.commit()
+
 
 def execute_plan(plan: SyncPlan, parsed: ParsedFile, session) -> None:
     """
@@ -190,6 +204,9 @@ def execute_plan(plan: SyncPlan, parsed: ParsedFile, session) -> None:
         db_t.sync_status = "local_dirty"
 
     for db_t in plan.to_delete:
+        session.delete(db_t)
+
+    for db_t in plan.to_untrack:
         session.delete(db_t)
 
     # Rebuild subtask links for the whole file

@@ -56,6 +56,17 @@ def get_log_level() -> str:
     return load().get("log_level", "warning")
 
 
+_VALID_ASK_MODES = {"always", "never", "delete_only"}
+
+
+def get_ask_mode() -> str:
+    """Return the confirmation mode: 'always', 'never', or 'delete_only' (default)."""
+    mode = load().get("ask", "always")
+    if mode not in _VALID_ASK_MODES:
+        raise ValueError(f"Invalid ask mode {mode!r}. Must be one of: {', '.join(sorted(_VALID_ASK_MODES))}")
+    return mode
+
+
 def get_jira_config() -> dict | None:
     """Return the [jira] section if all required fields are present, else None."""
     data = load()

@@ -15,7 +15,7 @@ from .mappers.jira import JiraMapper
 from .models import Ticket
 from .storage.database import get_session, init_db
 from .storage.models import File as DBFile
-from .sync import assign_ids, build_plan, execute_plan
+from .sync import assign_ids, build_plan, execute_plan, flatten, mark_synced
 
 
 @click.group()
@@ -61,18 +61,30 @@ def push(file: str, dry_run: bool) -> None:
             )
         return
 
-    # Confirm deletions before executing
-    confirmed_deletes = []
-    for db_t in plan.to_delete:
+    # Per-ticket 3-way prompt for every detected deletion.
+    for db_t in list(plan.to_delete):
         remote = f" ({db_t.remote_key})" if db_t.remote_key else ""
-        if click.confirm(
-            f"\nYou removed ticket '{db_t.title}'{remote} — delete it in Jira?",
-            default=False,
-        ):
-            confirmed_deletes.append(db_t)
-        else:
-            click.echo(f"  Skipping deletion of '{db_t.title}'.")
-    plan.to_delete = confirmed_deletes
+        click.echo(f"\n  Ticket removed from file: '{db_t.title}'{remote}")
+        choice = click.prompt(
+            "  What should happen?",
+            type=click.Choice(["delete", "untrack", "abort"]),
+            default="untrack",
+        )
+        if choice == "abort":
+            click.echo("Aborted.")
+            return
+        elif choice == "untrack":
+            plan.to_delete.remove(db_t)
+            plan.to_untrack.append(db_t)
+        # "delete" → leave in plan.to_delete as-is
+
+    # Overall confirmation for creates/updates (respects ask mode).
+    ask = todo_config.get_ask_mode()
+    has_remote_changes = bool(plan.to_create or plan.to_update)
+    if ask == "always" and has_remote_changes:
+        if not click.confirm("\nProceed?", default=False):
+            click.echo("Aborted.")
+            return
 
     # Jira sync (if configured)
     jira_cfg = todo_config.get_jira_config()
@@ -82,13 +94,16 @@ def push(file: str, dry_run: bool) -> None:
             username=jira_cfg["username"],
             api_token=jira_cfg["api_token"],
         )
-        _push_to_jira(plan, parsed, mapper)
+        synced_ids = _push_to_jira(plan, parsed, mapper)
     else:
         click.echo(
             "\n(Jira not configured — syncing to local DB only. Run `todofiles config set jira.*` to enable.)"
         )
+        # No remote — local DB is the only target, so everything is clean after write.
+        synced_ids = {t.id for t in plan.to_create if t.id} | {t.id for t in plan.to_update if t.id}
 
     execute_plan(plan, parsed, session)
+    mark_synced(synced_ids, session)
 
     keys_written_back = any(t.remote_key for t in plan.to_create)
     if changed or keys_written_back:
@@ -98,12 +113,20 @@ def push(file: str, dry_run: bool) -> None:
     click.echo("Done.")
 
 
-def _push_to_jira(plan, parsed, mapper: JiraMapper) -> None:
-    """Call the Jira API for each planned change. Updates ticket.remote_key in place."""
+def _push_to_jira(plan, parsed, mapper: JiraMapper) -> set[str]:
+    """Call the Jira API for each planned change. Updates ticket.remote_key in place.
+    Returns the set of local ticket IDs that were successfully synced."""
+    synced: set[str] = set()
+
     for ticket in plan.to_create:
         try:
             key = mapper.create(ticket, parsed.config)
             ticket.remote_key = key
+            # Materialize config-level labels onto the ticket so they get written back
+            # to the file and included in the stored hash.
+            if not ticket.labels and parsed.config.labels:
+                ticket.labels = list(parsed.config.labels)
+            synced.add(ticket.id)
             click.echo(f"  Created {key}: {ticket.title}")
         except Exception as e:
             click.echo(f"  ERROR creating '{ticket.title}': {e}", err=True)
@@ -111,6 +134,7 @@ def _push_to_jira(plan, parsed, mapper: JiraMapper) -> None:
     for ticket in plan.to_update:
         try:
             mapper.update(ticket, parsed.config)
+            synced.add(ticket.id)
             click.echo(f"  Updated {ticket.remote_key}: {ticket.title}")
         except Exception as e:
             click.echo(f"  ERROR updating '{ticket.title}': {e}", err=True)
@@ -120,9 +144,12 @@ def _push_to_jira(plan, parsed, mapper: JiraMapper) -> None:
             continue
         try:
             mapper.delete(db_t.remote_key)
+            synced.add(db_t.id)
             click.echo(f"  Deleted {db_t.remote_key}: {db_t.title}")
         except Exception as e:
             click.echo(f"  ERROR deleting '{db_t.remote_key}': {e}", err=True)
+
+    return synced
 
 
 # ------------------------------------------------------------------
@@ -188,6 +215,66 @@ def pull(file: str, dry_run: bool) -> None:
     _mark_pulled_clean(parsed.path, pulled_keys, session)
 
     click.echo("\nDone.")
+
+
+# ------------------------------------------------------------------
+# import
+# ------------------------------------------------------------------
+
+
+@cli.command("import")
+@click.argument("file", type=click.Path(exists=True))
+@click.argument("ticket_key")
+def import_ticket(file: str, ticket_key: str) -> None:
+    """Fetch TICKET_KEY from Jira and append it to FILE."""
+    jira_cfg = todo_config.get_jira_config()
+    if not jira_cfg:
+        click.echo("Jira not configured — run `todofiles config set jira.*` to enable.", err=True)
+        sys.exit(1)
+
+    try:
+        parsed = todo_parser.parse(file)
+    except Exception as e:
+        click.echo(f"Parse error: {e}", err=True)
+        sys.exit(1)
+
+    # Guard against importing a ticket that's already tracked.
+    existing_keys = {t.remote_key for t, _ in flatten(parsed) if t.remote_key}
+    if ticket_key in existing_keys:
+        click.echo(f"{ticket_key} is already tracked in this file.", err=True)
+        sys.exit(1)
+
+    mapper = JiraMapper(
+        base_url=jira_cfg["base_url"],
+        username=jira_cfg["username"],
+        api_token=jira_cfg["api_token"],
+    )
+
+    try:
+        ticket = mapper.fetch(ticket_key)
+    except Exception as e:
+        click.echo(f"Failed to fetch {ticket_key}: {e}", err=True)
+        sys.exit(1)
+
+    # Map Jira status back to a local code using the file's status_map.
+    inverse_status_map = {v.lower(): k for k, v in parsed.config.status_map.items()}
+    jira_status = ticket.extra_fields.pop("_jira_status", "")
+    ticket.status = inverse_status_map.get(jira_status.lower(), "")
+
+    parsed.items.append(ticket)
+    assign_ids(parsed)
+
+    click.echo(f"  Importing {ticket_key}: {ticket.title}  [{ticket.status}]")
+
+    todo_writer.write(parsed)
+
+    init_db()
+    session = get_session()
+    plan = build_plan(parsed, session)
+    execute_plan(plan, parsed, session)
+    mark_synced({ticket.id} if ticket.id else set(), session)
+
+    click.echo("Done.")
 
 
 def _pull_from_jira(parsed, mapper: JiraMapper, inverse_status_map: dict) -> list:
@@ -417,11 +504,14 @@ def _print_plan(plan) -> None:
             remote = f"  {t.remote_key}" if t.remote_key else ""
             click.echo(f"    ~ [{t.status}] {t.title}{remote}")
 
-    if plan.to_delete:
-        click.echo(f"\n  {click.style('DELETE', fg='red')} ({len(plan.to_delete)})")
+    if plan.to_delete or plan.to_untrack:
+        total = len(plan.to_delete) + len(plan.to_untrack)
+        click.echo(f"\n  {click.style('DELETE', fg='red')} ({total})")
         for t in plan.to_delete:
             remote = f"  ({t.remote_key})" if t.remote_key else ""
             click.echo(f"    - {t.title}{remote}")
+        for t in plan.to_untrack:
+            click.echo(f"    - {t.title}  (untrack only)")
 
     if plan.clean:
         click.echo(
