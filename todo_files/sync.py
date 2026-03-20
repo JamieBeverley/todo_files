@@ -113,8 +113,17 @@ def build_plan(parsed: ParsedFile, session) -> SyncPlan:
             plan.to_create.append(ticket)
         else:
             db_t = db_tickets[ticket.id]
+            # Restore remote_key from DB in case a previous write-back to the file failed.
+            ticket.remote_key = ticket.remote_key or db_t.remote_key
             if db_t.last_synced_hash != ticket_hash(ticket):
                 plan.to_update.append(ticket)
+            elif db_t.sync_status == "local_dirty":
+                # Hash matches but a previous push never made it to the remote.
+                # Re-attempt: create if we never got a remote key, update if we did.
+                if db_t.remote_key:
+                    plan.to_update.append(ticket)
+                else:
+                    plan.to_create.append(ticket)
             else:
                 plan.clean.append(ticket)
 
@@ -149,17 +158,27 @@ def execute_plan(plan: SyncPlan, parsed: ParsedFile, session) -> None:
     flat = {t.id: (t, parent_id) for t, parent_id in flatten(parsed)}
 
     for ticket in plan.to_create:
-        db_t = DBTicket(
-            id=ticket.id,
-            file_id=db_file.id,
-            title=ticket.title,
-            status=ticket.status,
-            fields_json=_fields_json(ticket),
-            remote_key=ticket.remote_key,
-            last_synced_hash=ticket_hash(ticket),
-            sync_status="local_dirty",
-        )
-        session.add(db_t)
+        existing = session.get(DBTicket, ticket.id)
+        if existing:
+            # Recovery: row was written on a previous failed push; just update it.
+            existing.title = ticket.title
+            existing.status = ticket.status
+            existing.fields_json = _fields_json(ticket)
+            existing.remote_key = ticket.remote_key
+            existing.last_synced_hash = ticket_hash(ticket)
+            existing.sync_status = "local_dirty"
+        else:
+            db_t = DBTicket(
+                id=ticket.id,
+                file_id=db_file.id,
+                title=ticket.title,
+                status=ticket.status,
+                fields_json=_fields_json(ticket),
+                remote_key=ticket.remote_key,
+                last_synced_hash=ticket_hash(ticket),
+                sync_status="local_dirty",
+            )
+            session.add(db_t)
 
     for ticket in plan.to_update:
         db_t = session.get(DBTicket, ticket.id)

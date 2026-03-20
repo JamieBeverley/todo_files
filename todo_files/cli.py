@@ -291,6 +291,100 @@ def config_set(assignment: str) -> None:
     click.echo(f"Set {key!r}.")
 
 
+@config.command("whoami")
+def config_whoami() -> None:
+    """Show your Jira account ID (useful for setting assignee in .todo headers)."""
+    jira_cfg = todo_config.get_jira_config()
+    if not jira_cfg:
+        click.echo("Jira not configured — run `todofiles config set jira.*` to enable.", err=True)
+        sys.exit(1)
+
+    import requests
+    from requests.auth import HTTPBasicAuth
+
+    url = jira_cfg["base_url"].rstrip("/") + "/rest/api/3/myself"
+    resp = requests.get(
+        url,
+        auth=HTTPBasicAuth(jira_cfg["username"], jira_cfg["api_token"]),
+        headers={"Accept": "application/json"},
+    )
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        click.echo(f"Jira request failed: {e}", err=True)
+        sys.exit(1)
+
+    data = resp.json()
+    click.echo(f"displayName: {data.get('displayName')}")
+    click.echo(f"emailAddress: {data.get('emailAddress')}")
+    click.echo(f"accountId:    {data.get('accountId')}")
+
+
+@config.command("status-map")
+@click.option("--board", default=None, help="Project key to scope statuses (e.g. MYPROJ). Defaults to global.")
+def config_status_map(board: str | None) -> None:
+    """Print a status_map template based on your Jira project's statuses."""
+    jira_cfg = todo_config.get_jira_config()
+    if not jira_cfg:
+        click.echo("Jira not configured — run `todofiles config set jira.*` to enable.", err=True)
+        sys.exit(1)
+
+    import requests
+    from requests.auth import HTTPBasicAuth
+
+    base = jira_cfg["base_url"].rstrip("/")
+    auth = HTTPBasicAuth(jira_cfg["username"], jira_cfg["api_token"])
+    headers = {"Accept": "application/json"}
+
+    project_key = board or jira_cfg.get("board")
+    if project_key:
+        url = f"{base}/rest/api/3/project/{project_key}/statuses"
+        resp = requests.get(url, auth=auth, headers=headers)
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError as e:
+            click.echo(f"Jira request failed: {e}", err=True)
+            sys.exit(1)
+        # Response is a list of issue types, each with a list of statuses.
+        # Deduplicate by name, preserving first-seen order.
+        seen: set[str] = set()
+        status_names: list[str] = []
+        for issue_type in resp.json():
+            for s in issue_type.get("statuses", []):
+                name = s["name"]
+                if name not in seen:
+                    seen.add(name)
+                    status_names.append(name)
+    else:
+        url = f"{base}/rest/api/3/status"
+        resp = requests.get(url, auth=auth, headers=headers)
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError as e:
+            click.echo(f"Jira request failed: {e}", err=True)
+            sys.exit(1)
+        status_names = [s["name"] for s in resp.json()]
+
+    # Suggest local codes for well-known Jira status names.
+    _SUGGESTIONS: dict[str, str] = {
+        "to do": '""',
+        "open": '""',
+        "backlog": '""',
+        "in progress": "in_prog",
+        "in review": "review",
+        "done": "x",
+        "closed": "x",
+        "resolved": "x",
+        "won't do": "skip",
+        "cancelled": "skip",
+    }
+
+    click.echo("status_map:")
+    for name in status_names:
+        suggested = _SUGGESTIONS.get(name.lower(), f'"{name.lower().replace(" ", "_")}"')
+        click.echo(f"    {suggested}: {name}")
+
+
 @config.command("show")
 def config_show() -> None:
     """Show current configuration (api_token is redacted)."""

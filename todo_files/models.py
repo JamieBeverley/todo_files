@@ -21,6 +21,7 @@ class FileConfig:
     item_type: str = "task"
     labels: list[str] = field(default_factory=list)
     status_map: dict[str, str] = field(default_factory=dict)
+    assignee: str | None = None  # Jira accountId to assign all tickets to
     extra: dict = field(default_factory=dict)
 
 

@@ -25,7 +25,11 @@ class JiraMapper(BaseMapper):
     def create(self, ticket: Ticket, config: FileConfig) -> str:
         payload = self._build_fields(ticket, config)
         resp = self._post("/rest/api/3/issue", {"fields": payload})
-        return resp["key"]
+        key = resp["key"]
+        target_status = config.status_map.get(ticket.status)
+        if target_status:
+            self._transition(key, target_status)
+        return key
 
     def update(self, ticket: Ticket, config: FileConfig) -> None:
         assert ticket.remote_key, "Cannot update a ticket without a remote key"
@@ -57,6 +61,8 @@ class JiraMapper(BaseMapper):
         }
         if ticket.labels or config.labels:
             fields["labels"] = ticket.labels or config.labels
+        if config.assignee:
+            fields["assignee"] = {"accountId": config.assignee}
         if ticket.description:
             fields["description"] = _text_to_adf(ticket.description)
         return fields
@@ -66,6 +72,12 @@ class JiraMapper(BaseMapper):
     # ------------------------------------------------------------------
 
     def _transition(self, remote_key: str, target_status_name: str) -> None:
+        # Check current status first — skip the call if already there.
+        current = self._get(f"/rest/api/3/issue/{remote_key}?fields=status")
+        current_name = current["fields"]["status"]["name"]
+        if current_name.lower() == target_status_name.lower():
+            return
+
         transitions = self._get(f"/rest/api/3/issue/{remote_key}/transitions")
         match = next(
             (t for t in transitions["transitions"]

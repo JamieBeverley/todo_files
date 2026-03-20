@@ -38,7 +38,7 @@ def serialise(parsed: ParsedFile) -> str:
 # ------------------------------------------------------------------
 
 def _config_has_content(cfg: FileConfig) -> bool:
-    return bool(cfg.board or cfg.labels or cfg.status_map or cfg.item_type != "task" or cfg.extra)
+    return bool(cfg.board or cfg.labels or cfg.status_map or cfg.item_type != "task" or cfg.assignee or cfg.extra)
 
 
 def _serialise_config(cfg: FileConfig) -> str:
@@ -49,6 +49,8 @@ def _serialise_config(cfg: FileConfig) -> str:
         lines.append(f"item_type: {_yaml_str(cfg.item_type)}")
     if cfg.labels:
         lines.append(f"labels: {_yaml_list(cfg.labels)}")
+    if cfg.assignee:
+        lines.append(f"assignee: {_yaml_str(cfg.assignee)}")
     if cfg.status_map:
         lines.append("status_map:")
         for code, jira_status in cfg.status_map.items():

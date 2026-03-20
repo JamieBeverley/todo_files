@@ -23,6 +23,8 @@ _FIELD_RE = re.compile(r"^([\w][\w_-]*):\s*(.*)$")
 
 
 def parse(path: str) -> ParsedFile:
+    import os
+    path = os.path.abspath(path)
     with open(path, encoding="utf-8") as f:
         content = f.read()
     p = _Parser(content.splitlines())
@@ -75,12 +77,13 @@ class _Parser:
             self.consume()  # closing ---
 
         data: dict = yaml.safe_load("\n".join(yaml_lines)) or {}
-        known = {"board", "item_type", "labels", "status_map"}
+        known = {"board", "item_type", "labels", "status_map", "assignee"}
         return FileConfig(
             board=data.get("board"),
             item_type=data.get("item_type", "task"),
             labels=data.get("labels", []),
             status_map=data.get("status_map", {}),
+            assignee=data.get("assignee"),
             extra={k: v for k, v in data.items() if k not in known},
         )
 
