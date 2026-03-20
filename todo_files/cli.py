@@ -1,4 +1,5 @@
 """CLI entry point for todofiles."""
+
 from __future__ import annotations
 
 import sys
@@ -27,9 +28,12 @@ def cli() -> None:
 # push
 # ------------------------------------------------------------------
 
+
 @cli.command()
 @click.argument("file", type=click.Path(exists=True))
-@click.option("--dry-run", is_flag=True, help="Show what would change without doing anything.")
+@click.option(
+    "--dry-run", is_flag=True, help="Show what would change without doing anything."
+)
 def push(file: str, dry_run: bool) -> None:
     """Parse FILE and push changes to the local DB and Jira (if configured)."""
     try:
@@ -52,14 +56,19 @@ def push(file: str, dry_run: bool) -> None:
 
     if dry_run:
         if changed:
-            click.echo("\n(--dry-run: new IDs were assigned in memory but not written to file)")
+            click.echo(
+                "\n(--dry-run: new IDs were assigned in memory but not written to file)"
+            )
         return
 
     # Confirm deletions before executing
     confirmed_deletes = []
     for db_t in plan.to_delete:
         remote = f" ({db_t.remote_key})" if db_t.remote_key else ""
-        if click.confirm(f"\nYou removed ticket '{db_t.title}'{remote} — delete it in Jira?", default=False):
+        if click.confirm(
+            f"\nYou removed ticket '{db_t.title}'{remote} — delete it in Jira?",
+            default=False,
+        ):
             confirmed_deletes.append(db_t)
         else:
             click.echo(f"  Skipping deletion of '{db_t.title}'.")
@@ -75,7 +84,9 @@ def push(file: str, dry_run: bool) -> None:
         )
         _push_to_jira(plan, parsed, mapper)
     else:
-        click.echo("\n(Jira not configured — syncing to local DB only. Run `todofiles config set jira.*` to enable.)")
+        click.echo(
+            "\n(Jira not configured — syncing to local DB only. Run `todofiles config set jira.*` to enable.)"
+        )
 
     execute_plan(plan, parsed, session)
 
@@ -90,6 +101,7 @@ def _push_to_jira(plan, parsed, mapper: JiraMapper) -> None:
     """Call the Jira API for each planned change. Updates ticket.remote_key in place."""
     for ticket in plan.to_create:
         try:
+            breakpoint()
             key = mapper.create(ticket, parsed.config)
             ticket.remote_key = key
             click.echo(f"  Created {key}: {ticket.title}")
@@ -117,9 +129,12 @@ def _push_to_jira(plan, parsed, mapper: JiraMapper) -> None:
 # pull
 # ------------------------------------------------------------------
 
+
 @cli.command()
 @click.argument("file", type=click.Path(exists=True))
-@click.option("--dry-run", is_flag=True, help="Show what would change without doing anything.")
+@click.option(
+    "--dry-run", is_flag=True, help="Show what would change without doing anything."
+)
 def pull(file: str, dry_run: bool) -> None:
     """Fetch the latest state from Jira and update FILE."""
     try:
@@ -133,7 +148,8 @@ def pull(file: str, dry_run: bool) -> None:
     jira_cfg = todo_config.get_jira_config()
     if not jira_cfg:
         click.echo(
-            "Jira not configured — run `todofiles config set jira.*` to enable.", err=True
+            "Jira not configured — run `todofiles config set jira.*` to enable.",
+            err=True,
         )
         sys.exit(1)
 
@@ -244,6 +260,7 @@ def _print_pull_changes(changes: list) -> None:
 # diff  (stub)
 # ------------------------------------------------------------------
 
+
 @cli.command()
 @click.argument("file", type=click.Path(exists=True))
 def diff(file: str) -> None:
@@ -255,6 +272,7 @@ def diff(file: str) -> None:
 # ------------------------------------------------------------------
 # config
 # ------------------------------------------------------------------
+
 
 @cli.group()
 def config() -> None:
@@ -284,12 +302,14 @@ def config_show() -> None:
     if "jira" in data and "api_token" in data["jira"]:
         data["jira"]["api_token"] = "***"
     import yaml
+
     click.echo(yaml.dump(data, default_flow_style=False).strip())
 
 
 # ------------------------------------------------------------------
 # Output helpers
 # ------------------------------------------------------------------
+
 
 def _print_plan(plan) -> None:
     if plan.to_create:
@@ -310,4 +330,6 @@ def _print_plan(plan) -> None:
             click.echo(f"    - {t.title}{remote}")
 
     if plan.clean:
-        click.echo(f"\n  {click.style('CLEAN', fg='bright_black')} ({len(plan.clean)}) — no changes")
+        click.echo(
+            f"\n  {click.style('CLEAN', fg='bright_black')} ({len(plan.clean)}) — no changes"
+        )
