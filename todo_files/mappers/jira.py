@@ -1,11 +1,15 @@
 """Jira REST API v3 mapper."""
 from __future__ import annotations
 
+import logging
+
 import requests
 from requests.auth import HTTPBasicAuth
 
 from ..models import FileConfig, Ticket
 from .base import BaseMapper
+
+_log = logging.getLogger(__name__)
 
 
 class JiraMapper(BaseMapper):
@@ -86,6 +90,7 @@ class JiraMapper(BaseMapper):
     def _issue_to_ticket(data: dict) -> Ticket:
         fields = data["fields"]
         description = _adf_to_text(fields.get("description")) if fields.get("description") else None
+        jira_status = fields.get("status", {}).get("name", "")
         return Ticket(
             title=fields["summary"],
             status="",  # caller maps Jira status back to local code if desired
@@ -93,6 +98,7 @@ class JiraMapper(BaseMapper):
             item_type=fields.get("issuetype", {}).get("name"),
             description=description,
             labels=fields.get("labels", []),
+            extra_fields={"_jira_status": jira_status} if jira_status else {},
         )
 
     # ------------------------------------------------------------------
@@ -100,25 +106,33 @@ class JiraMapper(BaseMapper):
     # ------------------------------------------------------------------
 
     def _get(self, path: str) -> dict:
-        resp = requests.get(self._base + path, auth=self._auth, headers=self._headers)
+        url = self._base + path
+        _log.debug("GET %s", url)
+        resp = requests.get(url, auth=self._auth, headers=self._headers)
+        _log.debug("GET %s → %s", url, resp.status_code)
         _raise(resp)
         return resp.json()
 
     def _post(self, path: str, body: dict) -> dict:
-        resp = requests.post(
-            self._base + path, json=body, auth=self._auth, headers=self._headers
-        )
+        url = self._base + path
+        _log.debug("POST %s", url)
+        resp = requests.post(url, json=body, auth=self._auth, headers=self._headers)
+        _log.debug("POST %s → %s", url, resp.status_code)
         _raise(resp)
         return resp.json() if resp.content else {}
 
     def _put(self, path: str, body: dict) -> None:
-        resp = requests.put(
-            self._base + path, json=body, auth=self._auth, headers=self._headers
-        )
+        url = self._base + path
+        _log.debug("PUT %s", url)
+        resp = requests.put(url, json=body, auth=self._auth, headers=self._headers)
+        _log.debug("PUT %s → %s", url, resp.status_code)
         _raise(resp)
 
     def _delete(self, path: str) -> None:
-        resp = requests.delete(self._base + path, auth=self._auth, headers=self._headers)
+        url = self._base + path
+        _log.debug("DELETE %s", url)
+        resp = requests.delete(url, auth=self._auth, headers=self._headers)
+        _log.debug("DELETE %s → %s", url, resp.status_code)
         _raise(resp)
 
 

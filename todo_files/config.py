@@ -51,6 +51,11 @@ def set_value(key_path: str, value: str) -> None:
     save(data)
 
 
+def get_log_level() -> str:
+    """Return the configured log level (default: 'warning')."""
+    return load().get("log_level", "warning")
+
+
 def get_jira_config() -> dict | None:
     """Return the [jira] section if all required fields are present, else None."""
     data = load()

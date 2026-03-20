@@ -1,6 +1,7 @@
 """SQLAlchemy engine and session factory."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -8,7 +9,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Base
 
-_DEFAULT_DB = Path.home() / ".todofiles" / "db.sqlite"
+_XDG_DATA_HOME = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+_DEFAULT_DB = _XDG_DATA_HOME / "todofiles" / "db.sqlite"
 
 
 def get_engine(db_path: str | Path | None = None):

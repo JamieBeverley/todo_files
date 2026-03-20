@@ -2,20 +2,25 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 
 import click
 
 from . import config as todo_config
+from . import log as todo_log
 from . import parser as todo_parser
 from . import writer as todo_writer
 from .mappers.jira import JiraMapper
+from .models import Ticket
 from .storage.database import get_session, init_db
+from .storage.models import File as DBFile
 from .sync import assign_ids, build_plan, execute_plan
 
 
 @click.group()
 def cli() -> None:
     """Sync local .todo files to Jira and other ticketing backends."""
+    todo_log.setup(todo_config.get_log_level())
 
 
 # ------------------------------------------------------------------
@@ -109,15 +114,130 @@ def _push_to_jira(plan, parsed, mapper: JiraMapper) -> None:
 
 
 # ------------------------------------------------------------------
-# pull  (stub)
+# pull
 # ------------------------------------------------------------------
 
 @cli.command()
 @click.argument("file", type=click.Path(exists=True))
-def pull(file: str) -> None:
-    """Fetch the latest state from Jira and update FILE. (Not yet implemented.)"""
-    click.echo("pull is not yet implemented.", err=True)
-    sys.exit(1)
+@click.option("--dry-run", is_flag=True, help="Show what would change without doing anything.")
+def pull(file: str, dry_run: bool) -> None:
+    """Fetch the latest state from Jira and update FILE."""
+    try:
+        parsed = todo_parser.parse(file)
+    except Exception as e:
+        click.echo(f"Parse error: {e}", err=True)
+        sys.exit(1)
+
+    assign_ids(parsed)
+
+    jira_cfg = todo_config.get_jira_config()
+    if not jira_cfg:
+        click.echo(
+            "Jira not configured — run `todofiles config set jira.*` to enable.", err=True
+        )
+        sys.exit(1)
+
+    mapper = JiraMapper(
+        base_url=jira_cfg["base_url"],
+        username=jira_cfg["username"],
+        api_token=jira_cfg["api_token"],
+    )
+
+    # Invert status_map so we can translate Jira status names back to local codes.
+    # e.g. {"in_prog": "In Progress"} → {"in progress": "in_prog"}
+    inverse_status_map = {v.lower(): k for k, v in parsed.config.status_map.items()}
+
+    changes = _pull_from_jira(parsed, mapper, inverse_status_map)
+
+    if not changes:
+        click.echo("Nothing to update — all linked tickets are up to date.")
+        return
+
+    _print_pull_changes(changes)
+
+    if dry_run:
+        click.echo("\n(--dry-run: no changes written)")
+        return
+
+    todo_writer.write(parsed)
+
+    init_db()
+    session = get_session()
+    plan = build_plan(parsed, session)
+    execute_plan(plan, parsed, session)
+
+    # execute_plan marks everything local_dirty; tickets we just fetched are
+    # actually clean (in sync with Jira), so fix their status.
+    pulled_keys = {remote_key for remote_key, _, _ in changes}
+    _mark_pulled_clean(parsed.path, pulled_keys, session)
+
+    click.echo("\nDone.")
+
+
+def _pull_from_jira(parsed, mapper: JiraMapper, inverse_status_map: dict) -> list:
+    """
+    Fetch each linked ticket from Jira and update parsed in place (remote wins).
+    Returns list of (remote_key, new_title, change_descriptions) for changed tickets.
+    """
+    changes = []
+
+    def _walk(tickets: list[Ticket]) -> None:
+        for ticket in tickets:
+            if ticket.remote_key:
+                try:
+                    remote = mapper.fetch(ticket.remote_key)
+                except Exception as e:
+                    click.echo(f"  ERROR fetching {ticket.remote_key}: {e}", err=True)
+                    _walk(ticket.subtasks)
+                    continue
+
+                jira_status = remote.extra_fields.get("_jira_status", "")
+                new_status = inverse_status_map.get(jira_status.lower(), ticket.status)
+
+                diffs = []
+                if remote.title != ticket.title:
+                    diffs.append(f"title: {ticket.title!r} → {remote.title!r}")
+                if remote.description != ticket.description:
+                    diffs.append("description updated")
+                if sorted(remote.labels) != sorted(ticket.labels):
+                    diffs.append(f"labels: {ticket.labels} → {remote.labels}")
+                if new_status != ticket.status:
+                    diffs.append(f"status: [{ticket.status}] → [{new_status}]")
+
+                if diffs:
+                    changes.append((ticket.remote_key, remote.title, diffs))
+                    ticket.title = remote.title
+                    ticket.description = remote.description
+                    ticket.labels = remote.labels
+                    ticket.status = new_status
+
+            _walk(ticket.subtasks)
+
+    for item in parsed.items:
+        if isinstance(item, Ticket):
+            _walk([item])
+
+    return changes
+
+
+def _mark_pulled_clean(file_path: str, pulled_keys: set[str], session) -> None:
+    """Set sync_status=clean and last_synced_at for tickets we just pulled."""
+    now = datetime.now(timezone.utc)
+    db_file = session.query(DBFile).filter_by(path=file_path).first()
+    if not db_file:
+        return
+    for db_t in db_file.tickets:
+        if db_t.remote_key in pulled_keys:
+            db_t.sync_status = "clean"
+            db_t.last_synced_at = now
+    session.commit()
+
+
+def _print_pull_changes(changes: list) -> None:
+    for remote_key, title, diffs in changes:
+        click.echo(f"\n  {click.style(remote_key, fg='cyan')}: {title}")
+        for d in diffs:
+            click.echo(f"    ~ {d}")
 
 
 # ------------------------------------------------------------------
