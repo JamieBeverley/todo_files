@@ -17,6 +17,7 @@ class JiraMapper(BaseMapper):
         self._base = base_url.rstrip("/")
         self._auth = HTTPBasicAuth(username, api_token)
         self._headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        self._active_sprint_cache: dict[str, int | None] = {}  # project_key → sprint id
 
     # ------------------------------------------------------------------
     # BaseMapper interface
@@ -24,6 +25,14 @@ class JiraMapper(BaseMapper):
 
     def create(self, ticket: Ticket, config: FileConfig) -> str:
         payload = self._build_fields(ticket, config)
+        if config.sprint:
+            sprint_id = (
+                self._resolve_active_sprint(config.board)
+                if config.sprint == "current"
+                else int(config.sprint)
+            )
+            if sprint_id is not None:
+                payload["customfield_10020"] = sprint_id
         resp = self._post("/rest/api/3/issue", {"fields": payload})
         key = resp["key"]
         target_status = config.status_map.get(ticket.status)
@@ -112,6 +121,32 @@ class JiraMapper(BaseMapper):
             labels=fields.get("labels", []),
             extra_fields={"_jira_status": jira_status} if jira_status else {},
         )
+
+    # ------------------------------------------------------------------
+    # Sprint helpers
+    # ------------------------------------------------------------------
+
+    def _resolve_active_sprint(self, project_key: str | None) -> int | None:
+        """Return the active sprint ID for the project, with a per-instance cache."""
+        if not project_key:
+            return None
+        if project_key in self._active_sprint_cache:
+            return self._active_sprint_cache[project_key]
+
+        boards = self._get(f"/rest/agile/1.0/board?projectKeyOrId={project_key}&type=scrum")
+        if not boards.get("values"):
+            _log.warning("No scrum board found for project %s", project_key)
+            self._active_sprint_cache[project_key] = None
+            return None
+
+        board_id = boards["values"][0]["id"]
+        sprints = self._get(f"/rest/agile/1.0/board/{board_id}/sprint?state=active")
+        sprint_id = sprints["values"][0]["id"] if sprints.get("values") else None
+
+        if sprint_id is None:
+            _log.warning("No active sprint found for board %d", board_id)
+        self._active_sprint_cache[project_key] = sprint_id
+        return sprint_id
 
     # ------------------------------------------------------------------
     # HTTP helpers

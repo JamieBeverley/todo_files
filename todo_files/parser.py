@@ -77,13 +77,15 @@ class _Parser:
             self.consume()  # closing ---
 
         data: dict = yaml.safe_load("\n".join(yaml_lines)) or {}
-        known = {"board", "item_type", "labels", "status_map", "assignee"}
+        known = {"board", "item_type", "labels", "status_map", "assignee", "sprint"}
+        sprint = data.get("sprint")
         return FileConfig(
             board=data.get("board"),
             item_type=data.get("item_type", "task"),
             labels=data.get("labels", []),
             status_map=data.get("status_map", {}),
             assignee=data.get("assignee"),
+            sprint=str(sprint) if sprint is not None else None,
             extra={k: v for k, v in data.items() if k not in known},
         )
 

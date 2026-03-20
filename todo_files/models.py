@@ -22,6 +22,7 @@ class FileConfig:
     labels: list[str] = field(default_factory=list)
     status_map: dict[str, str] = field(default_factory=dict)
     assignee: str | None = None  # Jira accountId to assign all tickets to
+    sprint: str | None = None   # "current" or a numeric sprint ID
     extra: dict = field(default_factory=dict)
 
 
