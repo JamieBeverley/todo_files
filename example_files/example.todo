@@ -1,0 +1,31 @@
+---
+# File-level defaults applied to all tickets
+labels: ["my_team", "my_project"]
+board: "BackendTeamBoard"
+item_type: "task"
+status_map:
+    x: "Done"
+    in_prog: "In Progress"
+    review: "In Review"
+---
+
+[ ] add json output format to products API
+
+[in_prog] refactor frontend to use v2 API
+    id: abc123
+    jira: PROJ-42
+
+[in_prog] add slack integration
+    id: ghi789
+    jira: PROJ-45
+    description: |
+        Add integration with our Slack bot using OAuth workflows.
+    subtasks:
+        [x] create oauth callback endpoint
+            id: jkl012
+            jira: PROJ-46
+        [ ] register new Slack App
+            id: mno345
+
+Lines like this that don't start with [...] are free-form comments.
+They are preserved in the file but never synced to any backend.
