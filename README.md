@@ -155,4 +155,5 @@ todofiles config set jira.base_url=https://mycompany.atlassian.net
 todofiles config set jira.username=me@example.com
 todofiles config set jira.api_token=secret
 ```
-
+# TODOs
+- pull isn't working correctly
