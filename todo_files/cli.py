@@ -172,6 +172,12 @@ def pull(file: str, dry_run: bool) -> None:
 
     assign_ids(parsed)
 
+    # Restore remote_key from DB for tickets whose write-back previously failed,
+    # so _pull_from_jira can fetch and update them too.
+    init_db()
+    session = get_session()
+    _restore_remote_keys(parsed, session)
+
     jira_cfg = todo_config.get_jira_config()
     if not jira_cfg:
         click.echo(
@@ -204,8 +210,6 @@ def pull(file: str, dry_run: bool) -> None:
 
     todo_writer.write(parsed)
 
-    init_db()
-    session = get_session()
     plan = build_plan(parsed, session)
     execute_plan(plan, parsed, session)
 
@@ -275,6 +279,19 @@ def import_ticket(file: str, ticket_key: str) -> None:
     mark_synced({ticket.id} if ticket.id else set(), session)
 
     click.echo("Done.")
+
+
+def _restore_remote_keys(parsed, session) -> None:
+    """Copy remote_key from DB to any in-memory ticket that lacks one."""
+    db_file = session.query(DBFile).filter_by(path=parsed.path).first()
+    if not db_file:
+        return
+    db_by_id = {t.id: t for t in db_file.tickets}
+    for ticket, _ in flatten(parsed):
+        if ticket.id and not ticket.remote_key:
+            db_t = db_by_id.get(ticket.id)
+            if db_t and db_t.remote_key:
+                ticket.remote_key = db_t.remote_key
 
 
 def _pull_from_jira(parsed, mapper: JiraMapper, inverse_status_map: dict) -> list:
