@@ -1,4 +1,5 @@
 """Jira REST API v3 mapper."""
+
 from __future__ import annotations
 
 import logging
@@ -16,7 +17,10 @@ class JiraMapper(BaseMapper):
     def __init__(self, base_url: str, username: str, api_token: str):
         self._base = base_url.rstrip("/")
         self._auth = HTTPBasicAuth(username, api_token)
-        self._headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        self._headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
         self._active_sprint_cache: dict[str, int | None] = {}  # project_key → sprint id
 
     # ------------------------------------------------------------------
@@ -34,7 +38,9 @@ class JiraMapper(BaseMapper):
                 else int(config.sprint)
             )
             if sprint_id is not None:
-                self._post(f"/rest/agile/1.0/sprint/{sprint_id}/issue", {"issues": [key]})
+                self._post(
+                    f"/rest/agile/1.0/sprint/{sprint_id}/issue", {"issues": [key]}
+                )
         target_status = config.status_map.get(ticket.status)
         if target_status:
             self._transition(key, target_status)
@@ -89,8 +95,11 @@ class JiraMapper(BaseMapper):
 
         transitions = self._get(f"/rest/api/3/issue/{remote_key}/transitions")
         match = next(
-            (t for t in transitions["transitions"]
-             if t["to"]["name"].lower() == target_status_name.lower()),
+            (
+                t
+                for t in transitions["transitions"]
+                if t["to"]["name"].lower() == target_status_name.lower()
+            ),
             None,
         )
         if match is None:
@@ -110,7 +119,11 @@ class JiraMapper(BaseMapper):
     @staticmethod
     def _issue_to_ticket(data: dict) -> Ticket:
         fields = data["fields"]
-        description = _adf_to_text(fields.get("description")) if fields.get("description") else None
+        description = (
+            _adf_to_text(fields.get("description"))
+            if fields.get("description")
+            else None
+        )
         jira_status = fields.get("status", {}).get("name", "")
         return Ticket(
             title=fields["summary"],
@@ -133,7 +146,9 @@ class JiraMapper(BaseMapper):
         if project_key in self._active_sprint_cache:
             return self._active_sprint_cache[project_key]
 
-        boards = self._get(f"/rest/agile/1.0/board?projectKeyOrId={project_key}&type=scrum")
+        boards = self._get(
+            f"/rest/agile/1.0/board?projectKeyOrId={project_key}&type=scrum"
+        )
         if not boards.get("values"):
             _log.warning("No scrum board found for project %s", project_key)
             self._active_sprint_cache[project_key] = None
@@ -187,6 +202,7 @@ class JiraMapper(BaseMapper):
 # Atlassian Document Format helpers
 # ------------------------------------------------------------------
 
+
 def _text_to_adf(text: str) -> dict:
     """Convert plain text to a minimal ADF document (paragraphs on double newline)."""
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
@@ -208,7 +224,8 @@ def _adf_to_text(adf: dict) -> str:
     parts: list[str] = []
     for block in adf.get("content", []):
         block_text = "".join(
-            node.get("text", "") for node in block.get("content", [])
+            node.get("text", "")
+            for node in block.get("content", [])
             if node.get("type") == "text"
         )
         if block_text:
@@ -225,6 +242,4 @@ def _raise(resp: requests.Response) -> None:
             detail = resp.json()
         except Exception:
             detail = resp.text
-        raise requests.HTTPError(
-            f"{e} — {detail}", response=resp
-        ) from None
+        raise requests.HTTPError(f"{e} — {detail}", response=resp) from None

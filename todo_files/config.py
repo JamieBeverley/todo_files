@@ -4,6 +4,7 @@ User-level config following the XDG Base Directory Specification.
 Config file: $XDG_CONFIG_HOME/todofiles/config.yaml
              (default: ~/.config/todofiles/config.yaml)
 """
+
 from __future__ import annotations
 
 import os
@@ -63,7 +64,9 @@ def get_ask_mode() -> str:
     """Return the confirmation mode: 'always', 'never', or 'delete_only' (default)."""
     mode = load().get("ask", "always")
     if mode not in _VALID_ASK_MODES:
-        raise ValueError(f"Invalid ask mode {mode!r}. Must be one of: {', '.join(sorted(_VALID_ASK_MODES))}")
+        raise ValueError(
+            f"Invalid ask mode {mode!r}. Must be one of: {', '.join(sorted(_VALID_ASK_MODES))}"
+        )
     return mode
 
 

@@ -1,4 +1,5 @@
 """SQLAlchemy engine and session factory."""
+
 from __future__ import annotations
 
 import os

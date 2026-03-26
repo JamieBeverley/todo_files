@@ -4,6 +4,7 @@ SyncPlan describing what would be created, updated, or deleted.
 
 Executing the plan (writing to DB or Jira) is the CLI's responsibility.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -19,6 +20,7 @@ from .storage.models import DBTicket, File, SubtaskLink
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
 
 def assign_ids(parsed: ParsedFile) -> bool:
     """
@@ -52,9 +54,7 @@ def ticket_hash(ticket: Ticket) -> str:
         "labels": sorted(ticket.labels),
         "extra_fields": ticket.extra_fields,
     }
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True).encode()
-    ).hexdigest()[:16]
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
 
 
 def flatten(parsed: ParsedFile) -> list[tuple[Ticket, str | None]]:
@@ -80,17 +80,20 @@ def flatten(parsed: ParsedFile) -> list[tuple[Ticket, str | None]]:
 # Sync plan
 # ------------------------------------------------------------------
 
+
 @dataclass
 class SyncPlan:
     to_create: list[Ticket] = field(default_factory=list)
     to_update: list[Ticket] = field(default_factory=list)
-    to_delete: list[DBTicket] = field(default_factory=list)    # delete from Jira + DB
-    to_untrack: list[DBTicket] = field(default_factory=list)   # remove from DB only
+    to_delete: list[DBTicket] = field(default_factory=list)  # delete from Jira + DB
+    to_untrack: list[DBTicket] = field(default_factory=list)  # remove from DB only
     clean: list[Ticket] = field(default_factory=list)
 
     @property
     def has_changes(self) -> bool:
-        return bool(self.to_create or self.to_update or self.to_delete or self.to_untrack)
+        return bool(
+            self.to_create or self.to_update or self.to_delete or self.to_untrack
+        )
 
 
 def build_plan(parsed: ParsedFile, session) -> SyncPlan:
@@ -139,6 +142,7 @@ def build_plan(parsed: ParsedFile, session) -> SyncPlan:
 # ------------------------------------------------------------------
 # Plan execution (DB only — Jira push is separate)
 # ------------------------------------------------------------------
+
 
 def mark_synced(ticket_ids: set[str], session) -> None:
     """Set sync_status='clean' for tickets that were successfully pushed to the remote."""
@@ -212,9 +216,7 @@ def execute_plan(plan: SyncPlan, parsed: ParsedFile, session) -> None:
     # Rebuild subtask links for the whole file
     all_ids = list(flat.keys())
     existing_links = (
-        session.query(SubtaskLink)
-        .filter(SubtaskLink.child_id.in_(all_ids))
-        .all()
+        session.query(SubtaskLink).filter(SubtaskLink.child_id.in_(all_ids)).all()
     )
     for link in existing_links:
         session.delete(link)
@@ -222,15 +224,19 @@ def execute_plan(plan: SyncPlan, parsed: ParsedFile, session) -> None:
 
     for pos, (ticket_id, (ticket, parent_id)) in enumerate(flat.items()):
         if parent_id:
-            session.add(SubtaskLink(parent_id=parent_id, child_id=ticket_id, position=pos))
+            session.add(
+                SubtaskLink(parent_id=parent_id, child_id=ticket_id, position=pos)
+            )
 
     session.commit()
 
 
 def _fields_json(ticket: Ticket) -> str:
-    return json.dumps({
-        "item_type": ticket.item_type,
-        "description": ticket.description,
-        "labels": ticket.labels,
-        "extra_fields": ticket.extra_fields,
-    })
+    return json.dumps(
+        {
+            "item_type": ticket.item_type,
+            "description": ticket.description,
+            "labels": ticket.labels,
+            "extra_fields": ticket.extra_fields,
+        }
+    )

@@ -5,6 +5,7 @@ Produces a ParsedFile containing FileConfig and an ordered list of Ticket
 objects and free-form string blocks, preserving everything in the file so the
 writer can round-trip it unchanged.
 """
+
 from __future__ import annotations
 
 import re
@@ -24,6 +25,7 @@ _FIELD_RE = re.compile(r"^([\w][\w_-]*):\s*(.*)$")
 
 def parse(path: str) -> ParsedFile:
     import os
+
     path = os.path.abspath(path)
     with open(path, encoding="utf-8") as f:
         content = f.read()

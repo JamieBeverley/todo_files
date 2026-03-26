@@ -1,4 +1,5 @@
 """SQLAlchemy ORM models."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -25,7 +26,9 @@ class DBTicket(Base):
     __tablename__ = "tickets"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)  # local UUID
-    file_id: Mapped[int] = mapped_column(Integer, ForeignKey("files.id"), nullable=False)
+    file_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("files.id"), nullable=False
+    )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
     fields_json: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -100,7 +100,9 @@ def push(file: str, dry_run: bool) -> None:
             "\n(Jira not configured — syncing to local DB only. Run `todofiles config set jira.*` to enable.)"
         )
         # No remote — local DB is the only target, so everything is clean after write.
-        synced_ids = {t.id for t in plan.to_create if t.id} | {t.id for t in plan.to_update if t.id}
+        synced_ids = {t.id for t in plan.to_create if t.id} | {
+            t.id for t in plan.to_update if t.id
+        }
 
     execute_plan(plan, parsed, session)
     mark_synced(synced_ids, session)
@@ -233,7 +235,10 @@ def import_ticket(file: str, ticket_key: str) -> None:
     """Fetch TICKET_KEY from Jira and append it to FILE."""
     jira_cfg = todo_config.get_jira_config()
     if not jira_cfg:
-        click.echo("Jira not configured — run `todofiles config set jira.*` to enable.", err=True)
+        click.echo(
+            "Jira not configured — run `todofiles config set jira.*` to enable.",
+            err=True,
+        )
         sys.exit(1)
 
     try:
@@ -400,7 +405,10 @@ def config_whoami() -> None:
     """Show your Jira account ID (useful for setting assignee in .todo headers)."""
     jira_cfg = todo_config.get_jira_config()
     if not jira_cfg:
-        click.echo("Jira not configured — run `todofiles config set jira.*` to enable.", err=True)
+        click.echo(
+            "Jira not configured — run `todofiles config set jira.*` to enable.",
+            err=True,
+        )
         sys.exit(1)
 
     import requests
@@ -425,12 +433,19 @@ def config_whoami() -> None:
 
 
 @config.command("status-map")
-@click.option("--board", default=None, help="Project key to scope statuses (e.g. MYPROJ). Defaults to global.")
+@click.option(
+    "--board",
+    default=None,
+    help="Project key to scope statuses (e.g. MYPROJ). Defaults to global.",
+)
 def config_status_map(board: str | None) -> None:
     """Print a status_map template based on your Jira project's statuses."""
     jira_cfg = todo_config.get_jira_config()
     if not jira_cfg:
-        click.echo("Jira not configured — run `todofiles config set jira.*` to enable.", err=True)
+        click.echo(
+            "Jira not configured — run `todofiles config set jira.*` to enable.",
+            err=True,
+        )
         sys.exit(1)
 
     import requests
@@ -485,7 +500,9 @@ def config_status_map(board: str | None) -> None:
 
     click.echo("status_map:")
     for name in status_names:
-        suggested = _SUGGESTIONS.get(name.lower(), f'"{name.lower().replace(" ", "_")}"')
+        suggested = _SUGGESTIONS.get(
+            name.lower(), f'"{name.lower().replace(" ", "_")}"'
+        )
         click.echo(f"    {suggested}: {name}")
 
 

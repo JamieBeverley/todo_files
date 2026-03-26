@@ -4,6 +4,7 @@ Writer for .todo files.
 Reconstructs a .todo file from a ParsedFile, preserving free-form comment
 blocks exactly and serialising Ticket objects back to the plain-text syntax.
 """
+
 from __future__ import annotations
 
 import json
@@ -37,8 +38,17 @@ def serialise(parsed: ParsedFile) -> str:
 # Config / frontmatter
 # ------------------------------------------------------------------
 
+
 def _config_has_content(cfg: FileConfig) -> bool:
-    return bool(cfg.board or cfg.labels or cfg.status_map or cfg.item_type != "task" or cfg.assignee or cfg.sprint or cfg.extra)
+    return bool(
+        cfg.board
+        or cfg.labels
+        or cfg.status_map
+        or cfg.item_type != "task"
+        or cfg.assignee
+        or cfg.sprint
+        or cfg.extra
+    )
 
 
 def _serialise_config(cfg: FileConfig) -> str:
@@ -66,6 +76,7 @@ def _serialise_config(cfg: FileConfig) -> str:
 # ------------------------------------------------------------------
 # Tickets
 # ------------------------------------------------------------------
+
 
 def _serialise_ticket(ticket: Ticket, indent: int) -> str:
     pad = " " * indent
@@ -99,6 +110,7 @@ def _serialise_ticket(ticket: Ticket, indent: int) -> str:
 # ------------------------------------------------------------------
 # YAML-ish value helpers
 # ------------------------------------------------------------------
+
 
 def _yaml_str(value: str) -> str:
     """Quote only if the value contains special characters."""
