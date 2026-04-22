@@ -104,6 +104,14 @@ def build_plan(parsed: ParsedFile, session) -> SyncPlan:
     plan = SyncPlan()
 
     db_file = session.query(File).filter_by(path=parsed.path).first()
+    if not db_file:
+        # File may have moved — try to locate it by the ticket IDs embedded in the file.
+        local_ids = [t.id for t, _ in flatten(parsed) if t.id]
+        if local_ids:
+            orphan = session.query(DBTicket).filter(DBTicket.id.in_(local_ids)).first()
+            if orphan:
+                db_file = orphan.file
+                db_file.path = parsed.path  # update path; committed by execute_plan
     db_tickets: dict[str, DBTicket] = {}
     if db_file:
         db_tickets = {t.id: t for t in db_file.tickets}
