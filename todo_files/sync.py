@@ -32,6 +32,8 @@ def assign_ids(parsed: ParsedFile) -> bool:
     def _walk(tickets: list[Ticket]) -> None:
         nonlocal changed
         for t in tickets:
+            if t.private:
+                continue
             if t.id is None:
                 t.id = uuid.uuid4().hex[:8]
                 changed = True
@@ -66,6 +68,8 @@ def flatten(parsed: ParsedFile) -> list[tuple[Ticket, str | None]]:
 
     def _walk(tickets: list[Ticket], parent_id: str | None) -> None:
         for t in tickets:
+            if t.private:
+                continue
             result.append((t, parent_id))
             _walk(t.subtasks, t.id)
 
@@ -139,10 +143,26 @@ def build_plan(parsed: ParsedFile, session) -> SyncPlan:
             else:
                 plan.clean.append(ticket)
 
-    # Tickets in DB but absent from the file → pending deletion
+    # Collect IDs of private tickets so we can untrack rather than delete them
+    private_ids: set[str] = set()
+
+    def _collect_private(tickets: list[Ticket]) -> None:
+        for t in tickets:
+            if t.private and t.id:
+                private_ids.add(t.id)
+            _collect_private(t.subtasks)
+
+    for item in parsed.items:
+        if isinstance(item, Ticket):
+            _collect_private([item])
+
+    # Tickets in DB but absent from the file → pending deletion (or untrack if now private)
     for tid, db_t in db_tickets.items():
         if tid not in local_ids:
-            plan.to_delete.append(db_t)
+            if tid in private_ids:
+                plan.to_untrack.append(db_t)
+            else:
+                plan.to_delete.append(db_t)
 
     return plan
 

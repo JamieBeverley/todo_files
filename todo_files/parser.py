@@ -202,6 +202,18 @@ class _Parser:
             line = self.peek()
             assert line is not None
             if line.strip() == "":
+                # Only consume this blank line if more content follows at content_indent.
+                # Trailing blanks belong to the surrounding structure, not the block scalar.
+                lookahead = self.pos + 1
+                while (
+                    lookahead < len(self.lines) and self.lines[lookahead].strip() == ""
+                ):
+                    lookahead += 1
+                if (
+                    lookahead >= len(self.lines)
+                    or self._indent(self.lines[lookahead]) < content_indent
+                ):
+                    break  # trailing blank — leave it for parse_body / parse_fields
                 lines.append("")
                 self.consume()
                 continue
@@ -209,7 +221,7 @@ class _Parser:
                 break
             lines.append(line[content_indent:])  # strip exactly content_indent spaces
             self.consume()
-        # Strip trailing blank lines (YAML clip chomping)
+        # Strip trailing blank lines (YAML clip chomping — defensive, shouldn't trigger now)
         while lines and lines[-1] == "":
             lines.pop()
         return "\n".join(lines)
@@ -231,5 +243,7 @@ class _Parser:
                 ticket.description = str(value)
             case "labels":
                 ticket.labels = list(value) if isinstance(value, list) else [str(value)]
+            case "private":
+                ticket.private = bool(value)
             case _:
                 ticket.extra_fields[key] = value

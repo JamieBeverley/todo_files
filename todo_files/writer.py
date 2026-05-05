@@ -85,6 +85,8 @@ def _serialise_ticket(ticket: Ticket, indent: int) -> str:
     field_pad = " " * (indent + 4)
 
     # Write managed fields in a consistent order, then extras
+    if ticket.private:
+        lines.append(f"{field_pad}private: true")
     if ticket.id:
         lines.append(f"{field_pad}id: {ticket.id}")
     if ticket.remote_key:
@@ -96,7 +98,7 @@ def _serialise_ticket(ticket: Ticket, indent: int) -> str:
     if ticket.description:
         lines.append(f"{field_pad}description: |")
         for desc_line in ticket.description.splitlines():
-            lines.append(f"{field_pad}    {desc_line}")
+            lines.append(f"{field_pad}    {desc_line}" if desc_line else "")
     for k, v in ticket.extra_fields.items():
         lines.append(f"{field_pad}{k}: {json.dumps(v)}")
     if ticket.subtasks:

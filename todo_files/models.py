@@ -13,6 +13,7 @@ class Ticket:
     labels: list[str] = field(default_factory=list)
     subtasks: list[Ticket] = field(default_factory=list)
     extra_fields: dict = field(default_factory=dict)
+    private: bool = False
 
 
 @dataclass
