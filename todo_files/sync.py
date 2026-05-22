@@ -92,6 +92,7 @@ class SyncPlan:
     to_delete: list[DBTicket] = field(default_factory=list)  # delete from Jira + DB
     to_untrack: list[DBTicket] = field(default_factory=list)  # remove from DB only
     clean: list[Ticket] = field(default_factory=list)
+    private: list[Ticket] = field(default_factory=list)
 
     @property
     def has_changes(self) -> bool:
@@ -143,13 +144,15 @@ def build_plan(parsed: ParsedFile, session) -> SyncPlan:
             else:
                 plan.clean.append(ticket)
 
-    # Collect IDs of private tickets so we can untrack rather than delete them
+    # Collect private tickets for untracking and display
     private_ids: set[str] = set()
 
     def _collect_private(tickets: list[Ticket]) -> None:
         for t in tickets:
-            if t.private and t.id:
-                private_ids.add(t.id)
+            if t.private:
+                plan.private.append(t)
+                if t.id:
+                    private_ids.add(t.id)
             _collect_private(t.subtasks)
 
     for item in parsed.items:

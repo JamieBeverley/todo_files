@@ -547,6 +547,13 @@ def _print_plan(plan) -> None:
         for t in plan.to_untrack:
             click.echo(f"    - {t.title}  (untrack only)")
 
+    if plan.private:
+        click.echo(
+            f"\n  {click.style('PRIVATE', fg='cyan')} ({len(plan.private)}) — local only"
+        )
+        for t in plan.private:
+            click.echo(f"    # [{t.status}] {t.title}")
+
     if plan.clean:
         click.echo(
             f"\n  {click.style('CLEAN', fg='bright_black')} ({len(plan.clean)}) — no changes"
