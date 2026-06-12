@@ -172,6 +172,8 @@ class _Parser:
 
             if key == "subtasks" and raw_value == "":
                 ticket.subtasks = self._parse_subtasks(field_indent + 4)
+            elif key == "internal" and raw_value == "":
+                ticket.internal = self._parse_raw_block(field_indent)
             elif raw_value == "|":
                 value = self._parse_multiline(field_indent + 4)
                 self._assign_field(ticket, key, value)
@@ -194,6 +196,47 @@ class _Parser:
             else:
                 break
         return subtasks
+
+    def _parse_raw_block(self, key_indent: int) -> str:
+        """
+        Capture the body of an `internal:` block verbatim.
+
+        Consumes every line indented deeper than the `internal:` key line
+        (whatever that depth happens to be — the block may use any indentation),
+        plus interior blank lines. The captured lines are dedented by their
+        common minimum indent so the writer can re-emit them relative to the
+        ticket's current indent, but their content and relative structure are
+        otherwise preserved untouched so push/pull round-trips them.
+        """
+        raw: list[str] = []
+        while not self.at_end():
+            line = self.peek()
+            assert line is not None
+            if line.strip() == "":
+                # Keep an interior blank only if more block content follows.
+                lookahead = self.pos + 1
+                while (
+                    lookahead < len(self.lines) and self.lines[lookahead].strip() == ""
+                ):
+                    lookahead += 1
+                if (
+                    lookahead >= len(self.lines)
+                    or self._indent(self.lines[lookahead]) <= key_indent
+                ):
+                    break  # trailing blank — belongs to the surrounding structure
+                raw.append("")
+                self.consume()
+                continue
+            if self._indent(line) <= key_indent:
+                break
+            raw.append(self.consume())
+
+        if not raw:
+            return ""
+
+        # Dedent by the common minimum indent of the non-blank lines.
+        dedent = min(self._indent(line) for line in raw if line.strip() != "")
+        return "\n".join(line[dedent:] if line.strip() != "" else "" for line in raw)
 
     def _parse_multiline(self, content_indent: int) -> str:
         """Consume a YAML block-scalar body (lines indented >= content_indent)."""

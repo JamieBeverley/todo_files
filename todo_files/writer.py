@@ -101,6 +101,11 @@ def _serialise_ticket(ticket: Ticket, indent: int) -> str:
             lines.append(f"{field_pad}    {desc_line}" if desc_line else "")
     for k, v in ticket.extra_fields.items():
         lines.append(f"{field_pad}{k}: {json.dumps(v)}")
+    if ticket.internal is not None:
+        lines.append(f"{field_pad}internal:")
+        inner_pad = field_pad + "    "
+        for raw_line in ticket.internal.split("\n"):
+            lines.append(f"{inner_pad}{raw_line}" if raw_line else "")
     if ticket.subtasks:
         lines.append(f"{field_pad}subtasks:")
         for sub in ticket.subtasks:

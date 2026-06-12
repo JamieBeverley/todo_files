@@ -14,6 +14,9 @@ class Ticket:
     subtasks: list[Ticket] = field(default_factory=list)
     extra_fields: dict = field(default_factory=dict)
     private: bool = False
+    # Raw text of the `internal:` sub-block, preserved verbatim across
+    # push/pull. None means no internal block was present.
+    internal: str | None = None
 
 
 @dataclass
